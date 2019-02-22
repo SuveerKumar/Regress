@@ -1,0 +1,37 @@
+{
+    "name": "regressiontool",
+    "version": "1.0.0",
+    "description": "",
+    "main": "server.js",
+    "scripts": {
+        "test": "jest --verbose",
+        "dev": "nodemon server.js"
+    },
+    "jest": {
+        "setupTestFrameworkScriptFile": "jest-expect-message",
+        "reporters": [
+            "default",
+            "jest-junit"
+        ]
+    },
+    "author": "suveer_keshav",
+    "license": "ISC",
+    "dependencies": {
+        "express": "^4.16.3",
+        "firebase": "^5.5.1",
+        "form-data": "^2.3.2",
+        "jest": "^23.6.0",
+        "multer": "^1.3.1",
+        "request": "^2.88.0",
+        "request-promise": "^4.2.2",
+        "gm": "^1.23.1",
+        "pixelmatch": "^4.0.2"
+    },
+    "devDependencies": {
+        "jest-junit": "^5.1.0",
+        "jest-expect-message": "^1.0.0",
+        "nodemon": "^1.18.4",
+        "superagent": "^4.0.0-beta.5",
+        "supertest": "^3.3.0"
+    }
+}
