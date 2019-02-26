@@ -1,4 +1,3 @@
-"use 'esversion: 6'";
 //Implement your backend in this file
 
 //Do not change these imports
@@ -13,6 +12,8 @@ var upload = multer({dest: "uploads/"});
 var path = require("path");
 var mongoose = require('mongoose'); 
 var webshot = require('webshot');
+var PNG = require('pngjs').PNG;
+var pixelmatch = require('pixelmatch');
  
 
 
@@ -20,7 +21,14 @@ var webshot = require('webshot');
 const mongoDbBaseUrl = 'mongodb://localhost:27017/RegressTest';
 testDB = mongoose.connect(mongoDbBaseUrl, {useNewUrlParser: true});
 
-const Test = mongoose.model('skeshav', { name: String });
+const Test = mongoose.model('skeshav', 
+    { 
+        name: String,
+        url: String,
+        steps: {},
+        image: { data: Buffer, contentType: String }
+        
+    });
 
 
 //Implementation should be below
@@ -31,29 +39,41 @@ app.post('/api/savetestcase', function (req, res) {
     const testCaseName = Object.keys(req.body)[0];
     const testCaseBody = req.body[testCaseName];
     if( testCaseBody && (typeof testCaseBody == "object") ){
+        var func = new Function("return " + "function (a, b) { alert(a+b); return a + b; }")();
         var options = {
+            renderDelay: 15000,
             onLoadFinished: function() {
-              var links = document.getElementsByTagName('a');
-           
-              for (var i=0; i<links.length; i++) {
-                var link = links[i];
-                link.innerHTML = 'My custom text';
-              } 
+                // var searchInputField = $('.fan-input').get(0);
+                // searchInputField.value = "wonder woman";
+                // searchInputField.dispatchEvent(new Event("input"));
+                // $('.fan-btn.fan-btn-style-go').click();
+                
+
             }
         };
         
         var _res = res;
+        var _testCaseBody = testCaseBody;
+        var _fs = fs;
+        let testCaseSteps = testCaseBody.steps;
+        let testCaseUrl = testCaseBody.url;
+        let name = testCaseBody.name;
+        let refImagePath = path.join(__dirname, 'reference-images/'+name+'_ref.png');
         
-        webshot('google.com', 'google.png', options, function(err) {
-            // screenshot now saved to google.png
-            _res.status(200).send({"message": "SUCCESS"});
-        });
-        //testCaseBody
-        const pingTest = new Test(testCaseBody);
-        pingTest.save().then(() => {
-            res.status(200).send({status: "SUCCESS", message: "Test Case Saved"});
-        }, ()=>{
-            res.status(500).send({status: "ERROR", message: "Internal Error: Could not save to Mongo DB"});
+        webshot('https://www.w3schools.com/', refImagePath, options, function(err) {
+        // webshot(testCaseUrl, refImagePath, options, function(err) {
+            // screenshot now saved to the specified path
+            //_res.status(200).send({"message": "SUCCESS"});
+
+            //testCaseBody
+            const testCase = new Test(_testCaseBody);
+            testCase.image.data = _fs.readFileSync(refImagePath);
+            testCase.image.contentType = 'image/png';
+            testCase.save().then(() => {
+                _res.status(200).send({status: "SUCCESS", message: "Test Case Saved"});
+            }, ()=>{
+                _res.status(500).send({status: "ERROR", message: "Internal Error: Could not save to Mongo DB"});
+            });
         });
         
     }else{
@@ -82,40 +102,123 @@ app.get('/api/testcases', function (req, res) {
 // Get test case for test_id
 app.get('/api/testcase/:test_id', function (req, res) {
     // use mongoose to get a testcase with _id:test_id in the database
-    Test.find({_id: req.params.test_id},function(err, testCase) {
+    Test.findById(req.params.test_id,function(err, testCase) {
 
         // if there is an error retrieving, send the error. nothing after res.send(err) will execute
         if (err)
             res.send(err);
 
+        testCase.image = null;
         res.status(200).json(testCase); // return test in JSON format
+    });
+
+});
+
+// Get test case image for test_id
+app.get('/api/testcaseimage/:test_id', function (req, res) {
+    // use mongoose to get a testcase with _id:test_id in the database
+    Test.findById(req.params.test_id,function(err, testCase) {
+
+        // if there is an error retrieving, send the error. nothing after res.send(err) will execute
+        if (err)
+            res.send(err);
+
+        res.contentType(testCase.image.contentType);
+        res.status(200).send(testCase.image.data); // return test image
     });
 
 });
 
 // Run test case with _id: test_id
 app.get('/api/runtestcase/:test_id', function (req, res) {
-    var options = {
-        onLoadFinished: function() {
-          var links = document.getElementsByTagName('a');
-       
-          for (var i=0; i<links.length; i++) {
-            var link = links[i];
-            link.innerHTML = 'My custom text';
-          } 
-        }
-    };
-    
-    var _res = res;
-    
-    webshot('google.com', 'google.png', options, function(err) {
-        // screenshot now saved to google.png
-        _res.status(200).send({"message": "SUCCESS"});
+    // use mongoose to get a testcase and its image with _id:test_id in the database
+    Test.findById(req.params.test_id,function(err, testCase) {
+
+        // if there is an error retrieving, send the error. nothing after res.send(err) will execute
+        if (err)
+            res.send(err);
+        
+        let testCaseSteps = testCase.steps;
+        let testCaseUrl = testCase.url;
+        let name = testCase.name;
+        let contentType = testCase.image.contentType;
+        let refImagePath = path.join(__dirname, 'reference-images/'+name+'_ref.png');
+        let outputImagePath = path.join(__dirname, 'outputs/'+name+'_testoutput.png');
+        let diffImagePath = path.join(__dirname, 'diffs/'+name+'_diff.png');
+
+        var data = testCase.image.data;
+        var buf = Buffer.from(data, 'base64');
+        fs.writeFile(refImagePath, buf, function(err) {
+            if (err) throw err;
+        });
+
+        var options = {
+            renderDelay: 15000,
+            onLoadFinished: function() {
+                // var searchInputField = $('.fan-input').get(0);
+                // searchInputField.value = "wonder woman";
+                // searchInputField.dispatchEvent(new Event("input"));
+                // $('body').css("padding-left", 10);
+                setTimeout(function() {
+                    var links = document.getElementsByTagName('a');
+                    links[0].innerHTML = '';
+                }, 5000);
+                
+
+
+            }
+        };
+        
+        var _res = res;
+        var _fs = fs;
+        var _PNG = PNG;
+        var _pixelmatch = pixelmatch;
+        
+        webshot('https://www.w3schools.com/', outputImagePath, options, function(err) {
+        // webshot(testCaseUrl, outputImagePath, options, function(err) {
+            // screenshot now saved to <name>_testoutput.png
+            var testData = _fs.readFileSync(outputImagePath);
+            var testImg = _PNG.sync.read(testData);
+            var refData = data;
+            var refImg = _PNG.sync.read(refData);
+
+            if((testImg.height != refImg.height) || (testImg.width != refImg.width)){
+                _res.status(200).send({
+                    "success": false,
+                    "message": "Test Case FAILED! The height and width of the reference image and the test output image dont match."
+                });
+            }else{
+                var diff = new _PNG({width: testImg.width, height: testImg.height});
+
+                var diffPixels = _pixelmatch(testImg.data, refImg.data, diff.data, testImg.width, testImg.height, {threshold: 0.1});
+
+                if (diffPixels > 0) {
+                    diff.pack().pipe(_fs.createWriteStream(diffImagePath)).on('finish', ()=>{
+                        var diffImgData = _fs.readFileSync(diffImagePath);
+                        // deleteFile(diffImagePath);
+                        _res.contentType(contentType);
+                        _res.send(diffImgData);
+                    });
+                    
+                }else{
+                    _res.status(200).send({"message": "Test Case PASSED!", "success": true});
+                }
+            }
+
+            
+        });
+
     });
 
 });
 
 
+let deleteFile = function(path){
+    // Assuming that 'path' is a regular file.
+    fs.unlink(path, (err) => {
+        if (err) throw err;
+    });
+};
 
 
 
@@ -126,4 +229,3 @@ app.get('*', function(req, res) {
 
 
 module.exports = app;
-
